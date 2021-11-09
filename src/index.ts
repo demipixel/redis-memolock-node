@@ -32,7 +32,7 @@ export interface MemolockOptForClient<T, U> extends MemolockOptWithTtl<T> {
 
 export interface CacheClient<T, U> {
   get(keyVal: U, opt?: MemolockOpt<T>): Promise<T>;
-  delete(key: string): Promise<number>;
+  delete(keyVal: U): Promise<number>;
 }
 
 const DEFAULT_LOCK_TIMEOUT = 1000;
@@ -72,7 +72,7 @@ export class CacheService {
     return {
       get: (keyVal: U, opt?: MemolockOpt<T>) =>
         this.get(clientOpt.getKey(keyVal), { ...clientOpt, ...opt }, fetch),
-      delete: (key: string) => this.delete(key),
+      delete: (keyVal: U) => this.delete(clientOpt.getKey(keyVal)),
     };
   }
 
