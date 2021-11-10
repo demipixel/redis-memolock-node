@@ -25,10 +25,10 @@ function getArticle(articleId: string) {
     'article:' + articleId,
     // Cache for a minute
     { ttlMs: 60 * 1000 },
-    // Fetch post normally
+    // Fetch article normally
     async () => {
-      const post = await postService.getPost(1);
-      return post;
+      const article = await articleService.getArticle(1);
+      return article;
     },
   );
 }
@@ -45,7 +45,7 @@ const articleCache = cache.new(
     getKey: (articleId: number) => 'article:' + articleId,
     ttlMs: 60 * 1000,
   },
-  () => postService.getPost(1),
+  () => articleService.getArticle(1),
 );
 
 // Fetch the article at any time
