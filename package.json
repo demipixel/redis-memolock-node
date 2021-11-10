@@ -2,10 +2,7 @@
   "name": "redis-memolock",
   "description": "A simple, fast, and reliable memolock for Node.js and TypeScript.",
   "version": "1.0.0",
-  "main": "index.js",
-  "directories": {
-    "test": "test"
-  },
+  "main": "dist/index.js",
   "author": "Lucas Simon",
   "license": "MIT",
   "repository": {
@@ -15,7 +12,8 @@
   "scripts": {
     "build": "rimraf ./dist && tsc",
     "lint": "eslint",
-    "test": "jest --config ./jest-config.json --runInBand --coverage"
+    "test": "jest --config ./jest-config.json --runInBand --coverage",
+    "prepublish": "npm run build && npm test"
   },
   "dependencies": {
     "ioredis": "^4.28.0"

@@ -6,29 +6,33 @@ import { sleep } from './test-util';
 describe('Redis Cache', () => {
   let service: CacheService;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     service = new CacheService();
   });
 
-  afterAll(async () => {
-    await service.disconnect();
-  });
-
-  beforeEach(async () => {
-    count = 0;
-    key = getKey();
-  });
-
   afterEach(async () => {
+    service
+      .disconnect()
+      .catch((err) => console.error('Error service disconnecting', err));
+
     // Make sure we've unsubscribed from all channels
-    expect(service['redisUtil']['subInfo'][key + '_done']).toBeUndefined();
+    const keys = uncheckedKeys;
+    uncheckedKeys = [];
+    for (const key of keys) {
+      expect(service['redisUtil']['subInfo'][key + '_done']).toBeUndefined();
+    }
   });
 
   let keyId = 0;
-  const getKey = () => 'test:key_' + keyId++;
-  let key = '';
-  let count = 0;
-  const simpleFetch = async () => count++;
+  const getKey = () => {
+    const key = 'test:key_' + keyId++;
+    count[key] = 0;
+    uncheckedKeys.push(key);
+    return key;
+  };
+  let uncheckedKeys: string[] = [];
+  let count: { [key: string]: number } = {};
+  const simpleFetch = (key: string) => () => count[key]++;
 
   const DEFAULT_OPT = {
     ttlMs: 5000,
@@ -38,7 +42,8 @@ describe('Redis Cache', () => {
 
   describe('Get', () => {
     it('should get cached value', async () => {
-      const cache = service.new(DEFAULT_OPT, simpleFetch);
+      const key = getKey();
+      const cache = service.new(DEFAULT_OPT, simpleFetch(key));
       const first = await cache.get(key);
       const second = await cache.get(key);
 
@@ -47,9 +52,10 @@ describe('Redis Cache', () => {
     });
 
     it('should refetch after ttl', async () => {
+      const key = getKey();
       const cache = service.new(
         { ttlMs: 100, getKey: (key: string) => key },
-        simpleFetch,
+        simpleFetch(key),
       );
       const first = await cache.get(key);
       await sleep(150);
@@ -60,7 +66,8 @@ describe('Redis Cache', () => {
     });
 
     it('should only get one value when fetched async', async () => {
-      const cache = service.new(DEFAULT_OPT, simpleFetch);
+      const key = getKey();
+      const cache = service.new(DEFAULT_OPT, simpleFetch(key));
       const values = await Promise.all(
         [...Array(20)].map(async () => cache.get(key)),
       );
@@ -69,20 +76,22 @@ describe('Redis Cache', () => {
     });
 
     it('should get two separate values for different keys', async () => {
-      const first = await service.get(key, DEFAULT_OPT, simpleFetch);
-      const second = await service.get(getKey(), DEFAULT_OPT, simpleFetch);
+      const key = getKey();
+      const first = await service.get(key, DEFAULT_OPT, simpleFetch(key));
+      const second = await service.get(getKey(), DEFAULT_OPT, simpleFetch(key));
 
       expect(first).toBe(0);
       expect(second).toBe(1);
     });
 
     it('should retry if initial fetch fails', async () => {
+      const key = getKey();
       const failFirstFetch = async () => {
-        count++;
-        if (count === 1) {
+        count[key]++;
+        if (count[key] === 1) {
           throw new Error('fail first fetch');
         }
-        return count - 1;
+        return count[key] - 1;
       };
 
       // No lock timeout defined, will use default of 1000
@@ -102,6 +111,7 @@ describe('Redis Cache', () => {
     });
 
     it('should fail if fetch always fails', async () => {
+      const key = getKey();
       const alwaysFailFetch = async () => {
         throw new Error('always fail fetch');
       };
@@ -115,9 +125,10 @@ describe('Redis Cache', () => {
     });
 
     it('should succeed with long fetch', async () => {
+      const key = getKey();
       const longFetch = async () => {
         await sleep(100);
-        return count++;
+        return count[key]++;
       };
 
       const cache = service.new(DEFAULT_OPT, longFetch);
@@ -129,7 +140,8 @@ describe('Redis Cache', () => {
     });
 
     it('should refetch value if forceReresh is true', async () => {
-      const cache = service.new(DEFAULT_OPT, simpleFetch);
+      const key = getKey();
+      const cache = service.new(DEFAULT_OPT, simpleFetch(key));
       const first = await cache.get(key);
       const second = await cache.get(key, { forceRefresh: true });
 
@@ -138,12 +150,13 @@ describe('Redis Cache', () => {
     });
 
     it('should handle lots of concurrent requests', async () => {
+      const key = getKey();
       const failEveryOther = async () => {
-        count++;
-        if (count % 2 === 0) {
+        count[key]++;
+        if (count[key] % 2 === 0) {
           throw new Error('fail randomly');
         }
-        return count - 1;
+        return count[key] - 1;
       };
 
       const cache = service.new(
@@ -182,6 +195,7 @@ describe('Redis Cache', () => {
     });
 
     it('should throw error if max attempts reached', async () => {
+      const key = getKey();
       const cache = service.new(
         {
           ttlMs: 70,
@@ -192,7 +206,7 @@ describe('Redis Cache', () => {
         async () => {
           // Don't resolve until after tests complete.
           return new Promise((res, rej) => {
-            setTimeout(() => res(count++), 300);
+            setTimeout(() => res(count[key]++), 300);
           });
         },
       );
@@ -204,9 +218,10 @@ describe('Redis Cache', () => {
     });
 
     it('should still function if lockTimeout is too short', async () => {
+      const key = getKey();
       const slowFetch = async () => {
         await sleep(120);
-        return count++;
+        return count[key]++;
       };
 
       const cache = service.new({ ...DEFAULT_OPT, lockTimeout: 50 }, slowFetch);
@@ -219,6 +234,7 @@ describe('Redis Cache', () => {
     });
 
     it('should support custom encode/decode', async () => {
+      const key = getKey();
       const cache = service.new(
         {
           ttlMs: 1500,
@@ -248,7 +264,8 @@ describe('Redis Cache', () => {
       expect(await cache.get(key)).toHaveProperty('func');
     });
 
-    it('shoud allow cutom redis to be passed in', async () => {
+    it('should allow cutom redis to be passed in', async () => {
+      const key = getKey();
       await service.disconnect();
 
       service = new CacheService({
@@ -260,7 +277,7 @@ describe('Redis Cache', () => {
           ttlMs: 1500,
           getKey: (key: string) => key,
         },
-        simpleFetch,
+        simpleFetch(key),
       );
 
       const firstProm = cache.get(key);
@@ -273,11 +290,75 @@ describe('Redis Cache', () => {
       // This one will be decoded from cache
       expect(await cache.get(key)).toBe(0);
     });
+
+    it('should release lock on fail', async () => {
+      const key = getKey();
+      const cache = service.new(
+        {
+          ttlMs: 0,
+          lockTimeout: 1000,
+          getKey: (key: string) => key,
+        },
+        () => {
+          if (count[key]++ === 0) {
+            throw new Error('fail');
+          }
+          return count[key] - 1;
+        },
+      );
+
+      await cache.get(key).catch(() => {});
+      const start = Date.now();
+      const val = await cache.get(key);
+      // Should be fast. If it starts to take a long time, it means
+      // the lock was not released.
+      expect(Date.now() - start).toBeLessThan(100);
+      // If 0, got from cache instead of fetch
+      expect(val).toBe(1);
+    });
+
+    it('should release lock on success', async () => {
+      const key = getKey();
+      const cache = service.new(
+        {
+          ttlMs: 0,
+          lockTimeout: 1000,
+          getKey: (key: string) => key,
+        },
+        simpleFetch(key),
+      );
+
+      await cache.get(key);
+      const start = Date.now();
+      const val = await cache.get(key);
+      // Should be fast. If it starts to take a long time, it means
+      // the lock was not released.
+      expect(Date.now() - start).toBeLessThan(100);
+      // TTL is 0 so it should fetch again
+      expect(val).toBe(1);
+    });
+
+    it('should not error if cannot delete lock when failing', async () => {
+      const key = getKey();
+      const cache = service.new(DEFAULT_OPT, async () => {
+        await sleep(100);
+        throw new Error('fail from fetch');
+      });
+
+      const prom = cache.get(key);
+      await sleep(20);
+      // disconnect redis
+      await service.disconnect();
+
+      // Should not be redis error!
+      await expect(prom).rejects.toThrow('fail from fetch');
+    });
   });
 
   describe('Delete', () => {
     it('should delete value', async () => {
-      const cache = service.new(DEFAULT_OPT, simpleFetch);
+      const key = getKey();
+      const cache = service.new(DEFAULT_OPT, simpleFetch(key));
       await cache.get(key);
       await cache.delete(key);
       const second = await cache.get(key);
@@ -286,6 +367,7 @@ describe('Redis Cache', () => {
     });
 
     it('should not error on deleting non-existant key', async () => {
+      const key = getKey();
       const countDeleted = await service.delete(key);
       expect(countDeleted).toBe(0);
     });

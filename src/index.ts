@@ -62,7 +62,15 @@ export class CacheService {
   }
 
   async disconnect() {
-    await Promise.all([this.redisClient.quit(), this.redisSubClient.quit()]);
+    await Promise.all([
+      this.redisClient.quit(),
+      this.redisSubClient.quit(),
+    ]).catch((err) => {
+      /* istanbul ignore next */
+      if (err.message !== 'Connection is closed.') {
+        throw err;
+      }
+    });
   }
 
   new<T, U>(
@@ -98,20 +106,11 @@ export class CacheService {
   ): Promise<T> {
     opt.lockTimeout ??= DEFAULT_LOCK_TIMEOUT;
 
-    const keyLock = `${key}:lock`;
-    const isLocked =
-      this.isLockedCache.has(key) ||
-      (await this.redisClient.set(
-        keyLock,
-        'locked',
-        'PX',
-        opt.lockTimeout,
-        'NX',
-      )) !== 'OK';
+    const lockKey = `${key}:lock`;
 
     const keyChannel = `${key}_done`;
 
-    if (isLocked) {
+    if (await this.isLocked(key, lockKey, opt.lockTimeout)) {
       this.isLockedCache.add(key);
 
       // Subscribe to event to wait for the value
@@ -138,9 +137,19 @@ export class CacheService {
         });
       });
     } else {
-      this.isLockedCache.add(key);
-      // Fetch value
-      const value = await fetch();
+      // Fetch value, convert to promise as needed.
+      const value = await Promise.resolve()
+        .then(() => fetch())
+        .catch((e) => {
+          // Silent catch isn't ideal, but failure inside of
+          // failure seems worse. We can still recover if
+          // this delete fails.
+          this.redisClient.del(lockKey).catch(() => {});
+          this.isLockedCache.delete(key);
+          // Still throw error so user can handle it
+          throw e;
+        });
+
       await this.redisClient
         .pipeline()
         // Set value in cache
@@ -148,7 +157,7 @@ export class CacheService {
         // Publish value
         .publish(keyChannel, JSON.stringify(value))
         // Release lock
-        .del(keyLock)
+        .del(lockKey)
         .exec();
       this.isLockedCache.delete(key);
 
@@ -158,6 +167,28 @@ export class CacheService {
 
   async delete(key: string) {
     return this.redisClient.del(key);
+  }
+
+  private async isLocked(
+    key: string,
+    lockKey: string,
+    lockTimeout: number,
+  ): Promise<boolean> {
+    if (this.isLockedCache.has(key)) {
+      return true;
+    } else {
+      this.isLockedCache.add(key);
+      const wasLocked =
+        (await this.redisClient.set(
+          lockKey,
+          'locked',
+          'PX',
+          lockTimeout,
+          'NX',
+        )) !== 'OK';
+
+      return wasLocked;
+    }
   }
 }
 
