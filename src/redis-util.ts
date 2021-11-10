@@ -5,7 +5,7 @@ export class RedisUtilService {
     [channel: string]: {
       callbacks: Set<SubType>;
       timeouts: NodeJS.Timeout[];
-      decode: (message: string) => any;
+      decode: (message: string) => unknown;
     };
   } = {};
 
@@ -41,13 +41,13 @@ export class RedisUtilService {
       onError: onError_UNSAFE,
     }: {
       timeoutMs: number;
-      decode: (message: string) => any;
+      decode: (message: string) => unknown;
       onSuccess: SubType;
       onError: (timeout: boolean, err?: Error) => void;
     },
   ) {
     let hadCallback = false;
-    let onError: typeof onError_UNSAFE = (...args) => {
+    const onError: typeof onError_UNSAFE = (...args) => {
       if (hadCallback) {
         return;
       }
@@ -77,7 +77,7 @@ export class RedisUtilService {
     );
   }
 
-  private unsubscribeFromSubscribeOnce(channel: string, callback: any) {
+  private unsubscribeFromSubscribeOnce(channel: string, callback: SubType) {
     if (!this.subInfo[channel]) {
       return;
     }
@@ -90,7 +90,7 @@ export class RedisUtilService {
   }
 }
 
-type SubType = (data: any) => void;
+type SubType = (data: unknown) => void;
 type ErrorHandler = (err: Error) => void;
 
 export default RedisUtilService;

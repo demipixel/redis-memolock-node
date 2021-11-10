@@ -43,6 +43,7 @@ export class CacheService {
   private redisSubClient: Redis.Redis;
   private isLockedCache: Set<string>;
   private redisUtil: RedisUtilService;
+  private errorHandler?: (err: Error) => void;
 
   constructor(opt?: MemolockConstructorOpt) {
     /* istanbul ignore next */
@@ -55,9 +56,10 @@ export class CacheService {
       new Redis(opt?.redisPort, opt?.redisHost, opt?.redisOptions);
 
     this.isLockedCache = new Set();
+    this.errorHandler = opt?.errorHandler;
     this.redisUtil = new RedisUtilService(
       this.redisSubClient,
-      opt?.errorHandler,
+      this.errorHandler,
     );
   }
 
@@ -104,7 +106,7 @@ export class CacheService {
     fetch: () => T | Promise<T>,
     attempts: number,
   ): Promise<T> {
-    opt.lockTimeout ??= DEFAULT_LOCK_TIMEOUT;
+    const lockTimeout = (opt.lockTimeout ??= DEFAULT_LOCK_TIMEOUT);
 
     const lockKey = `${key}:lock`;
 
@@ -116,7 +118,7 @@ export class CacheService {
       // Subscribe to event to wait for the value
       return new Promise<T>((resolve, reject) => {
         this.redisUtil.subscribeOnce(keyChannel, {
-          timeoutMs: opt.lockTimeout!,
+          timeoutMs: lockTimeout,
           decode: (message: string) =>
             opt.decode ? opt.decode(message) : JSON.parse(message),
           onSuccess: (data: T) => {
@@ -144,7 +146,11 @@ export class CacheService {
           // Silent catch isn't ideal, but failure inside of
           // failure seems worse. We can still recover if
           // this delete fails.
-          this.redisClient.del(lockKey).catch(() => {});
+          this.redisClient.del(lockKey).catch(() => {
+            if (this.errorHandler) {
+              this.errorHandler(e);
+            }
+          });
           this.isLockedCache.delete(key);
           // Still throw error so user can handle it
           throw e;

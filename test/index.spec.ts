@@ -31,7 +31,7 @@ describe('Redis Cache', () => {
     return key;
   };
   let uncheckedKeys: string[] = [];
-  let count: { [key: string]: number } = {};
+  const count: { [key: string]: number } = {};
   const simpleFetch = (key: string) => () => count[key]++;
 
   const DEFAULT_OPT = {
@@ -166,7 +166,7 @@ describe('Redis Cache', () => {
 
       const promises = [...Array(250 * 3)].map(
         async (_, i) =>
-          new Promise<string>((res, rej) => {
+          new Promise<string>((res) => {
             setTimeout(
               () =>
                 cache
@@ -205,7 +205,7 @@ describe('Redis Cache', () => {
         },
         async () => {
           // Don't resolve until after tests complete.
-          return new Promise((res, rej) => {
+          return new Promise((res) => {
             setTimeout(() => res(count[key]++), 300);
           });
         },
@@ -307,7 +307,7 @@ describe('Redis Cache', () => {
         },
       );
 
-      await cache.get(key).catch(() => {});
+      await expect(cache.get(key)).rejects.toThrow('fail');
       const start = Date.now();
       const val = await cache.get(key);
       // Should be fast. If it starts to take a long time, it means
@@ -339,8 +339,12 @@ describe('Redis Cache', () => {
     });
 
     it('should not error if cannot delete lock when failing', async () => {
+      await service.disconnect();
+      const errorHandler = jest.fn();
+      service = new CacheService({ errorHandler });
+
       const key = getKey();
-      const cache = service.new(DEFAULT_OPT, async () => {
+      const cache = service.new({ ...DEFAULT_OPT }, async () => {
         await sleep(100);
         throw new Error('fail from fetch');
       });
@@ -352,6 +356,7 @@ describe('Redis Cache', () => {
 
       // Should not be redis error!
       await expect(prom).rejects.toThrow('fail from fetch');
+      expect(errorHandler).toHaveBeenCalled();
     });
   });
 

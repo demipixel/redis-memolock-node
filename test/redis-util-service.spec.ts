@@ -5,7 +5,7 @@ import { sleep } from './test-util';
 
 describe('RedisUtilService', () => {
   let service: RedisUtilService;
-  let errorHandler: jest.Mock<any, any>;
+  let errorHandler: jest.Mock<unknown, unknown[]>;
   let redisSubClient: Redis.Redis;
 
   beforeEach(() => {
@@ -17,7 +17,11 @@ describe('RedisUtilService', () => {
   afterEach(async () => {
     try {
       await redisSubClient.quit();
-    } catch (e) {}
+    } catch (e) {
+      if (e.message !== 'Connection is closed.') {
+        throw e;
+      }
+    }
   });
 
   it('should not cause issues on unknown messages', async () => {
@@ -40,8 +44,8 @@ describe('RedisUtilService', () => {
     service.subscribeOnce('random', {
       timeoutMs: 200,
       decode: (message: string) => message,
-      onSuccess: () => {},
-      onError: () => {},
+      onSuccess: () => null,
+      onError: () => null,
     });
 
     await sleep(200);
@@ -49,7 +53,7 @@ describe('RedisUtilService', () => {
   });
 
   it('should not error on unknown channel', async () => {
-    service['unsubscribeFromSubscribeOnce']('random', () => {});
+    service['unsubscribeFromSubscribeOnce']('random', () => null);
   });
 
   it('should call onError if redis is down when subscribe', async () => {
@@ -58,7 +62,7 @@ describe('RedisUtilService', () => {
     service.subscribeOnce('random', {
       timeoutMs: 200,
       decode: (message: string) => message,
-      onSuccess: () => {},
+      onSuccess: () => null,
       onError,
     });
 
@@ -71,8 +75,8 @@ describe('RedisUtilService', () => {
     service.subscribeOnce('key', {
       timeoutMs: 200,
       decode: (message: string) => message,
-      onSuccess: () => {},
-      onError: () => {},
+      onSuccess: () => null,
+      onError: () => null,
     });
     await sleep(50);
     await service['redisSubClient'].quit();
