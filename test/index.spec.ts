@@ -1,13 +1,13 @@
 import Redis from 'ioredis';
 
-import CacheService from '../src';
+import MemolockCache from '../src';
 import { sleep } from './test-util';
 
 describe('Redis Cache', () => {
-  let service: CacheService;
+  let service: MemolockCache;
 
   beforeEach(async () => {
-    service = new CacheService();
+    service = new MemolockCache();
   });
 
   afterEach(async () => {
@@ -268,7 +268,7 @@ describe('Redis Cache', () => {
       const key = getKey();
       await service.disconnect();
 
-      service = new CacheService({
+      service = new MemolockCache({
         redisClient: new Redis(),
         redisSubClient: new Redis(),
       });
@@ -341,7 +341,7 @@ describe('Redis Cache', () => {
     it('should not error if cannot delete lock when failing', async () => {
       await service.disconnect();
       const errorHandler = jest.fn();
-      service = new CacheService({ errorHandler });
+      service = new MemolockCache({ errorHandler });
 
       const key = getKey();
       const cache = service.new({ ...DEFAULT_OPT }, async () => {

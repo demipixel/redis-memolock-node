@@ -38,7 +38,7 @@ export interface CacheClient<T, U> {
 const DEFAULT_LOCK_TIMEOUT = 1000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 
-export class CacheService {
+export class MemolockCache {
   private redisClient: Redis.Redis;
   private redisSubClient: Redis.Redis;
   private isLockedCache: Set<string>;
@@ -198,4 +198,4 @@ export class CacheService {
   }
 }
 
-export default CacheService;
+export default MemolockCache;

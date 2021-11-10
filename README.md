@@ -15,10 +15,12 @@ npm i --save redis-memolock
 ## Usage
 
 ```ts
-import cacheService from 'redis-memolock';
+import MemolockCache from 'redis-memolock';
+
+const cache = new MemolockCache();
 
 function getArticle(articleId: string) {
-  return cacheService.get(
+  return cache.get(
     // Key
     'article:' + articleId,
     // Cache for a minute
@@ -35,12 +37,16 @@ function getArticle(articleId: string) {
 OR:
 
 ```ts
-import cacheService from 'redis-memolock';
+import MemolockCache from 'redis-memolock';
 
-const articleCache = cachService.new({
-  getKey: (articleId: number) => 'article:' + articleId,
-  ttlMs: 60 * 1000,
-});
+const cache = new MemolockCache();
+const articleCache = cache.new(
+  {
+    getKey: (articleId: number) => 'article:' + articleId,
+    ttlMs: 60 * 1000,
+  },
+  () => postService.getPost(1),
+);
 
 // Fetch the article at any time
 articleCache.get(123);
@@ -51,11 +57,7 @@ articleCache.delete(123);
 
 ## API
 
-### CacheService.get
-
-```ts
-cacheService.get(redisKey, opt, fetchFn);
-```
+### MemolockCache.get(redisKey, opt, fetchFn)
 
 Fetch a value from the cache. If the value is not in the cache, it will be fetched or wait for another process to fetch it.
 
@@ -63,29 +65,17 @@ Fetch a value from the cache. If the value is not in the cache, it will be fetch
 - `opt`: Options for the cache (see below).
 - `fetchFn`: A function that will be called to fetch the actual data if the cache is empty.
 
-### CacheService.delete
-
-```ts
-cacheService.delete(redisKey);
-```
+### MemolockCache.delete(redisKey)
 
 Identical to `redis.del(redisKey)`.
 
-### CacheService.new
-
-```ts
-cachService.new(opt);
-```
+### MemolockCache.new(opt)
 
 Returns a `CacheClient` instance with two methods: `get` and `delete`. See below for available options.
 
-### CacheClient.get
+### CacheClient.get(val, opt)
 
-```ts
-cacheClient.get(val, opt);
-```
-
-Passes `val` into your provided `getKey` function to get the Redis key. `opt` will override any options passed to `new`. Otherwise works the same as `cacheService.get`.
+Passes `val` into your provided `getKey` function to get the Redis key. `opt` will override any options passed to `new`. Otherwise works the same as `MemolockCache.get`.
 
 ### CacheClient.delete
 
@@ -93,15 +83,15 @@ Passes `val` into your provided `getKey` function to get the Redis key. `opt` wi
 cacheClient.delete(val);
 ```
 
-Pass `val` into your provided `getKey` function to get the Redis key. Works the same as `cacheService.delete`.
+Pass `val` into your provided `getKey` function to get the Redis key. Works the same as `MemolockCache.delete`.
 
 ## Options
 
-Options are available on `CacheService.get`, `CacheService.new`, and `CacheClient.get`.
+Options are available on `MemolockCache.get`, `MemolockCache.new`, and `CacheClient.get`.
 
-When using `CacheService.get`, you should always pass the same options for the same key to avoid unexpected behavior.
+When using `MemolockCache.get`, you should always pass the same options for the same key to avoid unexpected behavior.
 
-- `ttlMs`: How long before the cache expires in milliseconds. (Required for `CacheService.get` and `CacheClient.new`)
+- `ttlMs`: How long before the cache expires in milliseconds. (Required for `MemolockCache.get` and `CacheClient.new`)
 - `lockTimeout`: How long a lock is held. This should be longer than you expect a full fetch to take. If a process waits longer than `lockTimeout` for the cache to be populated, it will try again. (Default: 1000ms)
 - `maxAttempts`: How many lock timeouts before giving up and throwing an error. (Default: 3)
 - `forceRefresh`: Will ignore the cache and attempt to fetch the data again. Will not attempt a fetch if there's already a fetch in-progress. (Default: false)
