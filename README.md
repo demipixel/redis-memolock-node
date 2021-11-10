@@ -55,9 +55,15 @@ articleCache.get(123);
 articleCache.delete(123);
 ```
 
+---
+
 ## API
 
-### MemolockCache.get(redisKey, opt, fetchFn)
+---
+
+## MemolockCache
+
+### **MemolockCache.get(redisKey, opt, fetchFn)**
 
 Fetch a value from the cache. If the value is not in the cache, it will be fetched or wait for another process to fetch it.
 
@@ -65,25 +71,27 @@ Fetch a value from the cache. If the value is not in the cache, it will be fetch
 - `opt`: Options for the cache (see below).
 - `fetchFn`: A function that will be called to fetch the actual data if the cache is empty.
 
-### MemolockCache.delete(redisKey)
+### **MemolockCache.delete(redisKey)**
 
 Identical to `redis.del(redisKey)`.
 
-### MemolockCache.new(opt)
+### **MemolockCache.new(opt)**
 
 Returns a `CacheClient` instance with two methods: `get` and `delete`. See below for available options.
 
-### CacheClient.get(val, opt)
+---
+
+## CacheClient
+
+### **CacheClient.get(val, opt)**
 
 Passes `val` into your provided `getKey` function to get the Redis key. `opt` will override any options passed to `new`. Otherwise works the same as `MemolockCache.get`.
 
-### CacheClient.delete
-
-```ts
-cacheClient.delete(val);
-```
+### **CacheClient.delete(val)**
 
 Pass `val` into your provided `getKey` function to get the Redis key. Works the same as `MemolockCache.delete`.
+
+---
 
 ## Options
 
