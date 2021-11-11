@@ -23,13 +23,12 @@ function getArticle(id: string) {
   return cache.get(
     // Key
     'article:' + id,
+
     // Cache for a minute
     { ttlMs: 60 * 1000 },
+
     // Fetch article normally
-    async () => {
-      const article = await articleService.getArticle(id);
-      return article;
-    },
+    () => getArticleFromDb(id),
   );
 }
 ```
@@ -45,7 +44,7 @@ const articleCache = cache.new(
     getKey: (articleId: number) => 'article:' + articleId,
     ttlMs: 60 * 1000,
   },
-  (id) => articleService.getArticle(id),
+  (id) => getArticleFromDb(id),
 );
 
 // Fetch the article at any time
