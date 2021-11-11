@@ -19,15 +19,15 @@ import MemolockCache from 'redis-memolock';
 
 const cache = new MemolockCache();
 
-function getArticle(articleId: string) {
+function getArticle(id: string) {
   return cache.get(
     // Key
-    'article:' + articleId,
+    'article:' + id,
     // Cache for a minute
     { ttlMs: 60 * 1000 },
     // Fetch article normally
     async () => {
-      const article = await articleService.getArticle(1);
+      const article = await articleService.getArticle(id);
       return article;
     },
   );
@@ -45,7 +45,7 @@ const articleCache = cache.new(
     getKey: (articleId: number) => 'article:' + articleId,
     ttlMs: 60 * 1000,
   },
-  () => articleService.getArticle(1),
+  (id) => articleService.getArticle(id),
 );
 
 // Fetch the article at any time
