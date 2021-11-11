@@ -77,11 +77,15 @@ export class MemolockCache {
 
   new<T, U>(
     clientOpt: MemolockOptForClient<T, U>,
-    fetch: () => T | Promise<T>,
+    fetch: (keyVal: U) => T | Promise<T>,
   ): CacheClient<T, U> {
     return {
       get: (keyVal: U, opt?: MemolockOpt<T>) =>
-        this.get(clientOpt.getKey(keyVal), { ...clientOpt, ...opt }, fetch),
+        this.get(
+          clientOpt.getKey(keyVal),
+          { ...clientOpt, ...opt },
+          fetch.bind(null, keyVal) as () => T | Promise<T>,
+        ),
       delete: (keyVal: U) => this.delete(clientOpt.getKey(keyVal)),
     };
   }

@@ -74,9 +74,12 @@ Fetch a value from the cache. If the value is not in the cache, it will be fetch
 
 Identical to `redis.del(redisKey)`.
 
-### **MemolockCache.new(opt)**
+### **MemolockCache.new(opt, fetchFn)**
 
-Returns a `CacheClient` instance with two methods: `get` and `delete`. See below for available options.
+Returns a `CacheClient` instance with two methods: `get` and `delete`.
+
+- `opt`: Options for the cache (see below).
+- `fetchFn(getVal)`: A function that will be called to fetch the actual data if the cache is empty. It receives an argument which is the value passed into `CacheClient.get`.
 
 ---
 

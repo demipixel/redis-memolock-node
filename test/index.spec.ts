@@ -358,6 +358,15 @@ describe('Redis Cache', () => {
       await expect(prom).rejects.toThrow('fail from fetch');
       expect(errorHandler).toHaveBeenCalled();
     });
+
+    it('should support argument into fetch of new', async () => {
+      const cache = service.new({ ...DEFAULT_OPT }, (id: string) => {
+        return id;
+      });
+
+      const first = await cache.get('asdf');
+      expect(first).toBe('asdf');
+    });
   });
 
   describe('Delete', () => {
