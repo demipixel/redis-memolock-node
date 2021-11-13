@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import Redis, { Ok } from 'ioredis';
 
 import RedisUtilService from './redis-util';
 
@@ -30,9 +30,15 @@ export interface MemolockOptForClient<T, U> extends MemolockOptWithTtl<T> {
   getKey: (keyVal: U) => string;
 }
 
+export interface MemlockSetOpt<T> {
+  ttlMs: number;
+  encode?: (data: T) => string;
+}
+
 export interface CacheClient<T, U> {
   get(keyVal: U, opt?: MemolockOpt<T>): Promise<T>;
   delete(keyVal: U): Promise<number>;
+  set(keyVal: U, data: T): Promise<Ok | null>;
 }
 
 const DEFAULT_LOCK_TIMEOUT = 1000;
@@ -87,6 +93,8 @@ export class MemolockCache {
           fetch.bind(null, keyVal) as () => T | Promise<T>,
         ),
       delete: (keyVal: U) => this.delete(clientOpt.getKey(keyVal)),
+      set: (keyVal: U, data: T) =>
+        this.set(clientOpt.getKey(keyVal), data, clientOpt),
     };
   }
 
@@ -160,12 +168,14 @@ export class MemolockCache {
           throw e;
         });
 
+      const encodedValue = this.getEncodedData(value, opt.encode);
+
       await this.redisClient
         .pipeline()
         // Set value in cache
-        .set(key, JSON.stringify(value), 'PX', opt.ttlMs)
+        .set(key, encodedValue, 'PX', opt.ttlMs)
         // Publish value
-        .publish(keyChannel, JSON.stringify(value))
+        .publish(keyChannel, encodedValue)
         // Release lock
         .del(lockKey)
         .exec();
@@ -175,8 +185,21 @@ export class MemolockCache {
     }
   }
 
+  async set<T>(key: string, data: T, opt: MemlockSetOpt<T>) {
+    return this.redisClient.set(
+      key,
+      this.getEncodedData(data, opt.encode),
+      'PX',
+      opt.ttlMs,
+    );
+  }
+
   async delete(key: string) {
     return this.redisClient.del(key);
+  }
+
+  private getEncodedData<T>(data: T, encodeFn?: (data: T) => string) {
+    return encodeFn ? encodeFn(data) : JSON.stringify(data);
   }
 
   private async isLocked(

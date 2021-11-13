@@ -260,8 +260,10 @@ describe('Redis Cache', () => {
       // Second will be decoded from published message
       await expect(firstProm).resolves.toHaveProperty('func');
       await expect(secondProm).resolves.toHaveProperty('func');
+      expect((await secondProm).func()).toBe(3);
       // This one will be decoded from cache
       expect(await cache.get(key)).toHaveProperty('func');
+      expect((await cache.get(key)).func()).toBe(3);
     });
 
     it('should allow cutom redis to be passed in', async () => {
@@ -384,6 +386,35 @@ describe('Redis Cache', () => {
       const key = getKey();
       const countDeleted = await service.delete(key);
       expect(countDeleted).toBe(0);
+    });
+  });
+
+  describe('Set', () => {
+    it('should override existing value', async () => {
+      const key = getKey();
+      const cache = service.new(DEFAULT_OPT, simpleFetch(key));
+      await cache.get(key);
+      await cache.set(key, 2);
+      const second = await cache.get(key);
+
+      expect(second).toBe(2);
+    });
+
+    it('should encode correctly', async () => {
+      const key = getKey();
+      const cache = service.new(
+        {
+          ttlMs: 1500,
+          lockTimeout: 200,
+          getKey: (key: string) => key,
+          encode: () => 'encoded',
+          decode: (str) => str,
+        },
+        () => null,
+      );
+
+      await cache.set(key, null);
+      expect(await cache.get(key)).toBe('encoded');
     });
   });
 });
