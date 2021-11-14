@@ -12,7 +12,7 @@ export type MemolockConstructorOpt = {
   errorHandler?: (err: Error) => void;
 };
 
-interface MemolockOpt<T> {
+export interface MemolockOpt<T> {
   ttlMs?: number;
   lockTimeout?: number;
   maxAttempts?: number;
@@ -20,6 +20,8 @@ interface MemolockOpt<T> {
 
   encode?: (data: T) => string;
   decode?: (data: string) => T;
+
+  cacheIf?: (data: T) => boolean;
 }
 
 export interface MemolockOptWithTtl<T> extends MemolockOpt<T> {
@@ -169,16 +171,26 @@ export class MemolockCache {
         });
 
       const encodedValue = this.getEncodedData(value, opt.encode);
+      const shouldCache = opt.cacheIf ? opt.cacheIf(value) : true;
 
-      await this.redisClient
-        .pipeline()
-        // Set value in cache
-        .set(key, encodedValue, 'PX', opt.ttlMs)
-        // Publish value
-        .publish(keyChannel, encodedValue)
-        // Release lock
-        .del(lockKey)
-        .exec();
+      if (shouldCache) {
+        await this.redisClient
+          .pipeline()
+          // Set value in cache
+          .set(key, encodedValue, 'PX', opt.ttlMs)
+          // Publish value
+          .publish(keyChannel, encodedValue)
+          // Release lock
+          .del(lockKey)
+          .exec();
+      } else {
+        await this.redisClient
+          .pipeline()
+          .publish(keyChannel, encodedValue)
+          .del(lockKey)
+          .exec();
+      }
+
       this.isLockedCache.delete(key);
 
       return value;

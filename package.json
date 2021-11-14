@@ -1,7 +1,7 @@
 {
   "name": "redis-memolock",
   "description": "A simple, fast, and reliable memolock for Node.js and TypeScript.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "main": "dist/index.js",
   "author": "Lucas Simon",
   "license": "MIT",

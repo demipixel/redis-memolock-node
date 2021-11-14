@@ -369,6 +369,48 @@ describe('Redis Cache', () => {
       const first = await cache.get('asdf');
       expect(first).toBe('asdf');
     });
+
+    describe('cacheIf', () => {
+      it('should follow condition to decide if should cache', async () => {
+        const key = getKey();
+        const cache = service.new(
+          { ...DEFAULT_OPT, cacheIf: (val) => val >= 1 },
+          simpleFetch(key),
+        );
+
+        const start = Date.now();
+
+        const first = await cache.get(key);
+        expect(first).toBe(0);
+        const second = await cache.get(key);
+        expect(second).toBe(1);
+        const third = await cache.get(key);
+        expect(third).toBe(1);
+
+        // No timeouts
+        expect(Date.now() - start).toBeLessThan(200);
+      });
+
+      it("should publish value even if it doesn't cache", async () => {
+        const key = getKey();
+        const cache = service.new(
+          { ...DEFAULT_OPT, cacheIf: (val) => val >= 1 },
+          simpleFetch(key),
+        );
+
+        const start = Date.now();
+        const [first, second] = await Promise.all([
+          cache.get(key),
+          cache.get(key),
+        ]);
+
+        expect(first).toBe(0);
+        expect(second).toBe(0);
+
+        // No timeouts
+        expect(Date.now() - start).toBeLessThan(200);
+      });
+    });
   });
 
   describe('Delete', () => {
