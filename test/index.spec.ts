@@ -370,6 +370,25 @@ describe('Redis Cache', () => {
       expect(first).toBe('asdf');
     });
 
+    it('should support function for ttlMs', async () => {
+      const key = getKey();
+      const cache = service.new(
+        { ...DEFAULT_OPT, ttlMs: (val) => (val >= 1 ? 1000 : 0) },
+        simpleFetch(key),
+      );
+
+      const first = await cache.get(key);
+      expect(first).toBe(0);
+
+      await sleep(100);
+      const second = await cache.get(key);
+      expect(second).toBe(1); // Should have had 0 ttlMs
+
+      await sleep(100);
+      const third = await cache.get(key);
+      expect(third).toBe(1); // Should have had 1000 ttlMs
+    });
+
     describe('cacheIf', () => {
       it('should follow condition to decide if should cache', async () => {
         const key = getKey();

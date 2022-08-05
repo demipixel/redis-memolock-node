@@ -13,7 +13,7 @@ export type MemolockConstructorOpt = {
 };
 
 export interface MemolockOpt<T> {
-  ttlMs?: number;
+  ttlMs?: number | ((data: T) => number);
   lockTimeout?: number;
   maxAttempts?: number;
   forceRefresh?: boolean;
@@ -25,7 +25,7 @@ export interface MemolockOpt<T> {
 }
 
 export interface MemolockOptWithTtl<T> extends MemolockOpt<T> {
-  ttlMs: number;
+  ttlMs: number | ((data: T) => number);
 }
 
 export interface MemolockOptForClient<T, U> extends MemolockOptWithTtl<T> {
@@ -33,7 +33,7 @@ export interface MemolockOptForClient<T, U> extends MemolockOptWithTtl<T> {
 }
 
 export interface MemlockSetOpt<T> {
-  ttlMs: number;
+  ttlMs: number | ((data: T) => number);
   encode?: (data: T) => string;
 }
 
@@ -174,10 +174,12 @@ export class MemolockCache {
       const shouldCache = opt.cacheIf ? opt.cacheIf(value) : true;
 
       if (shouldCache) {
+        const ttlMs = await this.getTtlMs(value, opt.ttlMs);
+
         await this.redisClient
           .pipeline()
           // Set value in cache
-          .set(key, encodedValue, 'PX', opt.ttlMs)
+          .set(key, encodedValue, 'PX', ttlMs)
           // Publish value
           .publish(keyChannel, encodedValue)
           // Release lock
@@ -198,11 +200,13 @@ export class MemolockCache {
   }
 
   async set<T>(key: string, data: T, opt: MemlockSetOpt<T>) {
+    const ttlMs = await this.getTtlMs(data, opt.ttlMs);
+
     return this.redisClient.set(
       key,
       this.getEncodedData(data, opt.encode),
       'PX',
-      opt.ttlMs,
+      ttlMs,
     );
   }
 
@@ -233,6 +237,17 @@ export class MemolockCache {
         )) !== 'OK';
 
       return wasLocked;
+    }
+  }
+
+  private async getTtlMs<T>(
+    data: T,
+    ttlMs: number | ((data: T) => number),
+  ): Promise<number> {
+    if (typeof ttlMs === 'function') {
+      return ttlMs(data);
+    } else {
+      return ttlMs;
     }
   }
 }
