@@ -478,4 +478,107 @@ describe('Redis Cache', () => {
       expect(await cache.get(key)).toBe('encoded');
     });
   });
+
+  describe('decode failures stay local', () => {
+    const service = new MemolockCache();
+    afterAll(() => service.disconnect());
+
+    it('fetch that resolves to undefined does not crash the process', async () => {
+      let uncaught: Error | null = null;
+      const listener = (e: Error) => (uncaught = e);
+      process.once('uncaughtException', listener);
+
+      const KEY = 'bug:decode:undefined';
+      const cache = service.new(
+        { ttlMs: 100, lockTimeout: 30, getKey: (k: string) => k },
+        async () => {
+          await sleep(20);
+          return undefined;
+        },
+      );
+
+      const [v1, v2] = await Promise.all([cache.get(KEY), cache.get(KEY)]);
+      await sleep(10);
+      process.removeListener('uncaughtException', listener);
+
+      expect(uncaught).toBeNull();
+      expect(v1).toBeUndefined();
+      expect(v2).toBeNull();
+    });
+
+    it('should handle custom decode throwing errors locally', async () => {
+      let uncaught: Error | null = null;
+      const listener = (e: Error) => (uncaught = e);
+      process.once('uncaughtException', listener);
+
+      const KEY = 'bug:decode:throw';
+      const cache = service.new(
+        {
+          ttlMs: 100,
+          lockTimeout: 30,
+          getKey: (k: string) => k,
+          decode: () => {
+            throw new Error('decode error');
+          },
+        },
+        async () => {
+          await sleep(20);
+          return 'some-value';
+        },
+      );
+
+      const [res1, res2] = await Promise.allSettled([
+        cache.get(KEY),
+        cache.get(KEY),
+      ]);
+      await sleep(10);
+      process.removeListener('uncaughtException', listener);
+
+      expect(uncaught).toBeNull();
+
+      expect(res1.status).toBe('fulfilled');
+      if (res1.status === 'fulfilled') {
+        expect(res1.value).toBe('some-value');
+      }
+
+      expect(res2.status).toBe('rejected');
+      if (res2.status === 'rejected') {
+        expect(res2.reason).toEqual(new Error('decode error'));
+      }
+    });
+  });
+
+  describe('safeCall branch', () => {
+    it('invokes errorHandler if a user callback throws', async () => {
+      const errFn = jest.fn();
+      const service = new MemolockCache({ errorHandler: errFn });
+
+      // get direct access to redis and util helper
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const redis = (service as any).redisClient as Redis.Redis;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const util = (service as any).redisUtil;
+
+      // subscribe with a success-callback that throws
+      util.subscribeOnce('sc:test', {
+        timeoutMs: 1_000,
+        decode: (m: string) => m,
+        onSuccess: () => {
+          throw new Error('boom');
+        },
+        onError: () => {
+          /* ignore */
+        },
+      });
+
+      // publish a message so that onSuccess runs and throws
+      await sleep(50);
+      await redis.publish('sc:test', 'payload');
+      await sleep(200);
+
+      await service.disconnect();
+      expect(errFn).toHaveBeenCalledTimes(1);
+      expect(errFn.mock.calls[0][0]).toHaveProperty('message', 'boom');
+    });
+  });
 });

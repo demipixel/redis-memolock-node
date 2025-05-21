@@ -215,7 +215,12 @@ export class MemolockCache {
   }
 
   private getEncodedData<T>(data: T, encodeFn?: (data: T) => string) {
-    return encodeFn ? encodeFn(data) : JSON.stringify(data);
+    if (encodeFn) {
+      return encodeFn(data);
+    }
+
+    const str = JSON.stringify(data) as string | undefined;
+    return str?.length ? str : 'null';
   }
 
   private async isLocked(

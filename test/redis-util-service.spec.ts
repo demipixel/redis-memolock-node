@@ -53,7 +53,11 @@ describe('RedisUtilService', () => {
   });
 
   it('should not error on unknown channel', async () => {
-    service['unsubscribeFromSubscribeOnce']('random', () => null);
+    service['unsubscribeFromSubscribeOnce'](
+      'random',
+      () => null,
+      () => null,
+    );
   });
 
   it('should call onError if redis is down when subscribe', async () => {

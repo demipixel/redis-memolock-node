@@ -3,7 +3,8 @@ import Redis from 'ioredis';
 export class RedisUtilService {
   private subInfo: {
     [channel: string]: {
-      callbacks: Set<SubType>;
+      callbacks: Set<SubSuccess>;
+      errCallbacks: Set<SubError>;
       timeouts: NodeJS.Timeout[];
       decode: (message: string) => unknown;
     };
@@ -11,24 +12,32 @@ export class RedisUtilService {
 
   constructor(
     private readonly redisSubClient: Redis.Redis,
-    private errorHandler?: ErrorHandler,
+    private errorHandler: ErrorHandler = (e) => console.error(e),
   ) {
-    if (!this.errorHandler) {
-      this.errorHandler = (e) => console.error(e);
-    }
-
     this.redisSubClient.on('message', (channel: string, message: string) => {
       if (!this.subInfo[channel]) {
         return;
       }
 
-      const { callbacks, timeouts, decode } = this.subInfo[channel];
+      const { callbacks, errCallbacks, timeouts, decode } =
+        this.subInfo[channel];
       delete this.subInfo[channel];
 
-      const data = decode(message);
-      callbacks.forEach((callback) => callback(data));
+      let data: unknown;
+      try {
+        data = decode(message);
+      } catch (err) {
+        errCallbacks.forEach((cb) =>
+          this.safeCall(() => cb(false, err as Error)),
+        );
+        timeouts.forEach((timeout) => clearTimeout(timeout));
+        this.redisSubClient.unsubscribe(channel).catch(this.errorHandler);
+        return;
+      }
+
+      callbacks.forEach((cb) => this.safeCall(() => cb(data)));
       timeouts.forEach((timeout) => clearTimeout(timeout));
-      this.redisSubClient.unsubscribe(channel).catch(errorHandler);
+      this.redisSubClient.unsubscribe(channel).catch(this.errorHandler);
     });
   }
 
@@ -42,7 +51,7 @@ export class RedisUtilService {
     }: {
       timeoutMs: number;
       decode: (message: string) => unknown;
-      onSuccess: SubType;
+      onSuccess: SubSuccess;
       onError: (timeout: boolean, err?: Error) => void;
     },
   ) {
@@ -57,40 +66,61 @@ export class RedisUtilService {
 
     if (this.subInfo[channel]) {
       this.subInfo[channel].callbacks.add(onSuccess);
+      this.subInfo[channel].errCallbacks.add(onError);
     } else {
       this.subInfo[channel] = {
         callbacks: new Set([onSuccess]),
+        errCallbacks: new Set([onError]),
         timeouts: [],
         decode,
       };
       this.redisSubClient.subscribe(channel).catch((err) => {
         onError(false, err);
-        this.unsubscribeFromSubscribeOnce(channel, onSuccess);
+        this.unsubscribeFromSubscribeOnce(channel, onSuccess, onError);
       });
     }
 
     this.subInfo[channel].timeouts.push(
       setTimeout(() => {
-        this.unsubscribeFromSubscribeOnce(channel, onSuccess);
+        this.unsubscribeFromSubscribeOnce(channel, onSuccess, onError);
         onError(true);
       }, timeoutMs),
     );
   }
 
-  private unsubscribeFromSubscribeOnce(channel: string, callback: SubType) {
-    if (!this.subInfo[channel]) {
+  private unsubscribeFromSubscribeOnce(
+    channel: string,
+    successCallback: SubSuccess,
+    errorCallback: SubError,
+  ) {
+    const info = this.subInfo[channel];
+    if (!info) {
       return;
     }
 
-    this.subInfo[channel].callbacks.delete(callback);
-    if (this.subInfo[channel].callbacks.size === 0) {
+    info.callbacks.delete(successCallback);
+    if (errorCallback) {
+      info.errCallbacks.delete(errorCallback);
+    }
+
+    if (info.callbacks.size === 0) {
       delete this.subInfo[channel];
       this.redisSubClient.unsubscribe(channel).catch(this.errorHandler);
     }
   }
+
+  // utility: never let a userspace callback crash the process
+  private safeCall(fn: () => void) {
+    try {
+      fn();
+    } catch (e) {
+      this.errorHandler(e as Error);
+    }
+  }
 }
 
-type SubType = (data: unknown) => void;
+type SubSuccess = (data: unknown) => void;
+type SubError = (timeout: boolean, err?: Error) => void;
 type ErrorHandler = (err: Error) => void;
 
 export default RedisUtilService;
